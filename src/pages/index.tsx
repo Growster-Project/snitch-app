@@ -34,11 +34,12 @@ export default function LoginPage() {
         <div style={{ width: '100%', maxWidth: 400, zIndex: 10 }}>
           {/* Logo */}
           <div style={{ textAlign: 'center', marginBottom: '2.5rem' }}>
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-              <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'linear-gradient(135deg, #ff0080, #0050ff)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, boxShadow: '0 4px 20px rgba(255,0,128,0.4)' }}>🐹</div>
-              <span style={{ fontSize: 32, fontWeight: 800, color: '#fff', letterSpacing: '-1px' }}>Snitch<span style={{ color: '#ff0080' }}>.</span></span>
+            <div style={{ marginBottom: 12 }}>
+              <span style={{ fontSize: 28, fontWeight: 900, color: '#fff', letterSpacing: '-1px' }}>Snitch</span>
+              <span style={{ fontSize: 22, fontWeight: 400, color: 'rgba(255,255,255,0.4)', margin: '0 10px' }}>×</span>
+              <span style={{ fontSize: 28, fontWeight: 900, background: 'linear-gradient(135deg, #ff0080, #0050ff)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Growster</span>
             </div>
-            <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12, fontWeight: 400, letterSpacing: '0.1em', textTransform: 'uppercase' }}>by Growster</p>
+            <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12, fontWeight: 500, letterSpacing: '0.12em', textTransform: 'uppercase' }}>The Partnership Dashboard</p>
           </div>
 
           {/* Card */}
