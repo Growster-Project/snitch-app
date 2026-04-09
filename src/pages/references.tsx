@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import Head from 'next/head'
 import { useRouter } from 'next/router'
 import { supabase, type Profile, type Project, type Reference } from '@/lib/supabase'
@@ -6,6 +6,23 @@ import AppNav from '@/components/AppNav'
 
 const CATEGORIES = ['Shirts','Trousers','Shorts','Jeans','Sweaters','Jackets','Accessories','Perfumes','Shoes','Trends','Script (Multi)','Other']
 const DIRECTORS = ['Sneha','Kriti','Harshit']
+const CATEGORY_COLORS: Record<string,string> = {
+  'Shirts':'#ff0080','Trousers':'#0050ff','Shorts':'#f59e0b','Jeans':'#059669',
+  'Sweaters':'#8b5cf6','Jackets':'#ec4899','Accessories':'#06b6d4','Perfumes':'#f97316',
+  'Shoes':'#14b8a6','Trends':'#6366f1','Script (Multi)':'#84cc16','Other':'#9ca3af'
+}
+
+function detectCategory(url: string): string {
+  if (!url) return 'Other'
+  const u = url.toLowerCase()
+  if (u.includes('reel') || u.includes('tiktok')) return 'Trends'
+  if (u.includes('script') || u.includes('youtube')) return 'Script (Multi)'
+  return 'Other'
+}
+
+function formatUrl(url: string) {
+  try { return new URL(url).hostname.replace('www.','') } catch { return url.slice(0,30) }
+}
 
 export default function ReferencesPage() {
   const router = useRouter()
@@ -15,16 +32,17 @@ export default function ReferencesPage() {
   const [selectedProject, setSelectedProject] = useState<string>('')
   const [loading, setLoading] = useState(true)
   const [showAddProject, setShowAddProject] = useState(false)
-  const [showAddRef, setShowAddRef] = useState(false)
   const [newProjectName, setNewProjectName] = useState('')
   const [saving, setSaving] = useState(false)
-  const [editingRef, setEditingRef] = useState<Reference | null>(null)
-  const [showLogs, setShowLogs] = useState<string | null>(null)
-  const [logs, setLogs] = useState<any[]>([])
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
+  const [editingCell, setEditingCell] = useState<{id:string,field:string} | null>(null)
+  const [cellValue, setCellValue] = useState('')
+  const [deleting, setDeleting] = useState<string | null>(null)
 
-  const emptyRef = { reference_link: '', category: 'Shirts', script_notes: '', edit_notes: '', brand_callouts: '', shot_on_day: '', location: '', camera: '', file_number: '', assigned_director: '', other_category: '' }
-  const [refForm, setRefForm] = useState<any>(emptyRef)
-  const rf = (k: string, v: string) => setRefForm((p: any) => ({ ...p, [k]: v }))
+  // Quick-add row state
+  const [newRow, setNewRow] = useState({ reference_link:'', category:'Other', script_notes:'', edit_notes:'', brand_callouts:'', location:'', camera:'', file_number:'', assigned_director:'' })
+  const nr = (k:string, v:string) => setNewRow(p => ({...p, [k]:v}))
+  const linkRef = useRef<HTMLInputElement>(null)
 
   const load = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser()
@@ -57,48 +75,39 @@ export default function ReferencesPage() {
     setNewProjectName(''); setShowAddProject(false); setSaving(false)
   }
 
-  async function addReference() {
-    if (!selectedProject) return
+  async function addRowReference() {
+    if (!selectedProject || !newRow.reference_link.trim()) return
     setSaving(true)
-    const category = refForm.category === 'Other' ? refForm.other_category : refForm.category
-    const { error } = await supabase.from('references').insert({
+    await supabase.from('references').insert({
       project_id: selectedProject,
-      reference_link: refForm.reference_link || null,
-      category,
-      script_notes: refForm.script_notes || null,
-      edit_notes: refForm.edit_notes || null,
-      brand_callouts: refForm.brand_callouts || null,
-      shot_on_day: refForm.shot_on_day || null,
-      location: refForm.location || null,
-      camera: refForm.camera || null,
-      file_number: refForm.file_number || null,
-      assigned_director: refForm.assigned_director || null,
+      reference_link: newRow.reference_link || null,
+      category: newRow.category,
+      script_notes: newRow.script_notes || null,
+      edit_notes: newRow.edit_notes || null,
+      brand_callouts: newRow.brand_callouts || null,
+      location: newRow.location || null,
+      camera: newRow.camera || null,
+      file_number: newRow.file_number || null,
+      assigned_director: newRow.assigned_director || null,
       created_by: profile?.full_name,
     })
-    if (!error) { await loadRefs(selectedProject); setShowAddRef(false); setRefForm(emptyRef) }
+    await loadRefs(selectedProject)
+    setNewRow({ reference_link:'', category:'Other', script_notes:'', edit_notes:'', brand_callouts:'', location:'', camera:'', file_number:'', assigned_director:'' })
     setSaving(false)
+    linkRef.current?.focus()
   }
 
-  async function updateReference() {
-    if (!editingRef) return
-    setSaving(true)
-    const category = refForm.category === 'Other' ? refForm.other_category : refForm.category
-    const updates = {
-      reference_link: refForm.reference_link || null,
-      category,
-      script_notes: refForm.script_notes || null,
-      edit_notes: refForm.edit_notes || null,
-      brand_callouts: refForm.brand_callouts || null,
-      shot_on_day: refForm.shot_on_day || null,
-      location: refForm.location || null,
-      camera: refForm.camera || null,
-      file_number: refForm.file_number || null,
-      assigned_director: refForm.assigned_director || null,
-    }
-    await supabase.from('references').update(updates).eq('id', editingRef.id)
-    await supabase.from('reference_logs').insert({ reference_id: editingRef.id, user_name: profile?.full_name, user_role: profile?.role, action: 'edited', field_changed: 'multiple', old_value: null, new_value: JSON.stringify(updates) })
-    await loadRefs(selectedProject)
-    setEditingRef(null); setRefForm(emptyRef); setSaving(false)
+  async function saveCell(id: string, field: string, value: string) {
+    await supabase.from('references').update({ [field]: value || null }).eq('id', id)
+    setReferences(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r))
+    setEditingCell(null)
+  }
+
+  async function deleteRef(id: string) {
+    setDeleting(id)
+    await supabase.from('references').delete().eq('id', id)
+    setReferences(prev => prev.filter(r => r.id !== id))
+    setDeleting(null)
   }
 
   async function setApproval(ref: Reference, status: 'approved' | 'rejected') {
@@ -108,269 +117,306 @@ export default function ReferencesPage() {
     setReferences(prev => prev.map(r => r.id === ref.id ? { ...r, approval_status: status } : r))
   }
 
-  async function toggleLock(ref: Reference) {
-    if (profile?.role === 'brand' || profile?.role === 'agency') {
-      const newLocked = !ref.is_locked
-      await supabase.from('references').update({ is_locked: newLocked }).eq('id', ref.id)
-      await supabase.from('reference_logs').insert({ reference_id: ref.id, user_name: profile?.full_name, user_role: profile?.role, action: newLocked ? 'locked' : 'unlocked', field_changed: 'is_locked', old_value: String(ref.is_locked), new_value: String(newLocked) })
-      setReferences(prev => prev.map(r => r.id === ref.id ? { ...r, is_locked: newLocked } : r))
-    }
-  }
+  if (loading) return <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'#0a0a0f' }}><p style={{ color:'rgba(255,255,255,0.4)' }}>Loading…</p></div>
 
-  async function viewLogs(refId: string) {
-    const { data } = await supabase.from('reference_logs').select('*').eq('reference_id', refId).order('created_at', { ascending: false })
-    setLogs(data || [])
-    setShowLogs(refId)
-  }
+  const isBrand = profile?.role === 'brand'
+  const isAgency = profile?.role === 'agency' || profile?.role === 'director'
 
-  function openEdit(ref: Reference) {
-    const isOtherCategory = !CATEGORIES.slice(0, -1).includes(ref.category || '')
-    setRefForm({
-      reference_link: ref.reference_link || '',
-      category: isOtherCategory ? 'Other' : (ref.category || 'Shirts'),
-      other_category: isOtherCategory ? (ref.category || '') : '',
-      script_notes: ref.script_notes || '',
-      edit_notes: ref.edit_notes || '',
-      brand_callouts: ref.brand_callouts || '',
-      shot_on_day: ref.shot_on_day || '',
-      location: ref.location || '',
-      camera: ref.camera || '',
-      file_number: ref.file_number || '',
-      assigned_director: ref.assigned_director || '',
-    })
-    setEditingRef(ref)
-  }
+  // Group by category
+  const categories = CATEGORIES.filter(c => references.some(r => r.category === c))
+  const otherCats = [...new Set(references.map(r => r.category).filter(c => c && !CATEGORIES.includes(c)))] as string[]
+  const allCats = [...categories, ...otherCats]
 
-  if (loading) return <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}><p style={{ color: 'var(--text-secondary)' }}>Loading…</p></div>
+  const filteredRefs = selectedCategory
+    ? references.filter(r => r.category === selectedCategory)
+    : references
 
-  const isAgencyOrDirector = profile?.role === 'agency' || profile?.role === 'director'
-  const inputStyle: any = { background: 'var(--input-bg)', border: '1px solid var(--border)', borderRadius: 8, padding: '9px 12px', fontSize: 13, color: 'var(--text-primary)', fontFamily: 'inherit', outline: 'none', width: '100%' }
-  const labelStyle: any = { fontSize: 11, fontWeight: 600, display: 'block', marginBottom: 4, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }
+  const inputStyle: any = { background:'transparent', border:'none', outline:'none', fontSize:12, color:'rgba(255,255,255,0.8)', fontFamily:'inherit', width:'100%', padding:'6px 8px' }
+  const cellStyle: any = { padding:'0', borderRight:'1px solid rgba(255,255,255,0.05)', cursor:'pointer' }
 
   return (
     <>
       <Head><title>References — Snitch</title><meta name="viewport" content="width=device-width,initial-scale=1" /></Head>
       <AppNav profile={profile} />
 
-      <main style={{ maxWidth: 1400, margin: '0 auto', padding: '1.25rem 1rem', paddingBottom: '4rem' }}>
-        {/* Project selector */}
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
-          <select value={selectedProject} onChange={e => { setSelectedProject(e.target.value); loadRefs(e.target.value) }}
-            style={{ ...inputStyle, maxWidth: 280, fontWeight: 600, fontSize: 14 }}>
+      <main style={{ maxWidth:1600, margin:'0 auto', padding:'1.25rem 1rem 4rem' }}>
+
+        {/* Project selector + actions */}
+        <div style={{ display:'flex', gap:10, alignItems:'center', marginBottom:20, flexWrap:'wrap' }}>
+          <select value={selectedProject} onChange={e => { setSelectedProject(e.target.value); loadRefs(e.target.value); setSelectedCategory(null) }}
+            style={{ background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:10, padding:'9px 14px', fontSize:14, fontWeight:700, color:'#fff', fontFamily:'inherit', outline:'none', maxWidth:280 }}>
             {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
           <button onClick={() => setShowAddProject(true)}
-            style={{ padding: '9px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', whiteSpace: 'nowrap' as const }}>
-            + New Project
+            style={{ padding:'9px 16px', borderRadius:10, border:'1px solid rgba(255,255,255,0.1)', background:'rgba(255,255,255,0.05)', color:'rgba(255,255,255,0.7)', cursor:'pointer', fontSize:13, fontFamily:'inherit' }}>
+            + Project
           </button>
-          <button onClick={() => setShowAddRef(true)}
-            style={{ padding: '9px 16px', borderRadius: 8, border: 'none', background: 'var(--brand)', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit', whiteSpace: 'nowrap' as const }}>
-            + Add Reference
-          </button>
-          <span style={{ fontSize: 13, color: 'var(--text-tertiary)', marginLeft: 'auto' }}>{references.length} reference{references.length !== 1 ? 's' : ''}</span>
+          <span style={{ fontSize:13, color:'rgba(255,255,255,0.3)', marginLeft:'auto' }}>{references.length} refs</span>
         </div>
 
-        {/* References table */}
-        {references.length === 0 ? (
-          <div className="card" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-tertiary)' }}>
-            <div style={{ fontSize: 40, marginBottom: 12 }}>📋</div>
-            <p>No references yet. Add the first one!</p>
-          </div>
-        ) : (
-          <div style={{ overflowX: 'auto', borderRadius: 16, border: '1px solid var(--border)', background: 'var(--card-bg)' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid var(--border)', background: 'var(--tab-bg)' }}>
-                  {['#','Reference','Category','Script / Edit Notes','Brand Callouts','Shot Day','Location','Camera','File No.','Director','Status','Actions'].map(h => (
-                    <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' as const }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {references.map((ref, idx) => {
-                  const rowBg = ref.is_locked ? 'rgba(5,150,105,0.08)' : ref.approval_status === 'approved' ? 'rgba(5,150,105,0.04)' : ref.approval_status === 'rejected' ? 'rgba(220,38,38,0.04)' : 'transparent'
-                  return (
-                    <tr key={ref.id} style={{ borderBottom: '1px solid var(--border)', background: rowBg }}>
-                      <td style={{ padding: '10px 12px', color: 'var(--text-tertiary)', fontWeight: 600 }}>{idx + 1}</td>
-                      <td style={{ padding: '10px 12px', maxWidth: 180 }}>
-                        {ref.reference_link ? (
-                          <a href={ref.reference_link} target="_blank" rel="noreferrer" style={{ color: 'var(--brand)', fontSize: 12, textDecoration: 'none', fontWeight: 600 }}>↗ View</a>
-                        ) : <span style={{ color: 'var(--text-tertiary)' }}>—</span>}
-                      </td>
-                      <td style={{ padding: '10px 12px' }}>
-                        <span style={{ background: 'var(--brand-light)', color: 'var(--brand)', padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' as const }}>{ref.category || '—'}</span>
-                      </td>
-                      <td style={{ padding: '10px 12px', maxWidth: 200 }}>
-                        <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{ref.script_notes || '—'}</div>
-                        {ref.edit_notes && <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>Edit: {ref.edit_notes}</div>}
-                      </td>
-                      <td style={{ padding: '10px 12px', fontSize: 12, color: 'var(--text-secondary)', maxWidth: 140 }}>{ref.brand_callouts || '—'}</td>
-                      <td style={{ padding: '10px 12px', fontSize: 12, color: 'var(--text-secondary)', whiteSpace: 'nowrap' as const }}>{ref.shot_on_day || '—'}</td>
-                      <td style={{ padding: '10px 12px', fontSize: 12, color: 'var(--text-secondary)' }}>{ref.location || '—'}</td>
-                      <td style={{ padding: '10px 12px', fontSize: 12, color: 'var(--text-secondary)' }}>{ref.camera || '—'}</td>
-                      <td style={{ padding: '10px 12px', fontSize: 12, color: 'var(--text-secondary)' }}>{ref.file_number || '—'}</td>
-                      <td style={{ padding: '10px 12px' }}>
-                        {ref.assigned_director ? (
-                          <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 99, background: '#dbeafe', color: '#1d4ed8', fontWeight: 600 }}>{ref.assigned_director}</span>
-                        ) : <span style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>—</span>}
-                      </td>
-                      <td style={{ padding: '10px 12px' }}>
-                        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                          {ref.is_locked ? (
-                            <span style={{ fontSize: 16 }} title="Locked">🔒</span>
-                          ) : (
-                            <>
-                              <span style={{ fontSize: 16, opacity: ref.approval_status === 'approved' ? 1 : 0.3 }}>✅</span>
-                              <span style={{ fontSize: 16, opacity: ref.approval_status === 'rejected' ? 1 : 0.3 }}>❌</span>
-                            </>
+        {/* BRAND VIEW — Category cards */}
+        {isBrand && (
+          <>
+            {!selectedCategory ? (
+              <div>
+                <h2 style={{ fontSize:20, fontWeight:800, marginBottom:16, color:'#fff' }}>
+                  {projects.find(p=>p.id===selectedProject)?.name || 'Project'}
+                </h2>
+                {allCats.length === 0 ? (
+                  <div style={{ textAlign:'center', padding:'4rem', color:'rgba(255,255,255,0.3)' }}>
+                    <div style={{ fontSize:40, marginBottom:12 }}>📋</div>
+                    <p>No references added yet</p>
+                  </div>
+                ) : (
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(180px,1fr))', gap:14 }}>
+                    {allCats.map(cat => {
+                      const catRefs = references.filter(r => r.category === cat)
+                      const approved = catRefs.filter(r => r.approval_status === 'approved').length
+                      const color = CATEGORY_COLORS[cat] || '#9ca3af'
+                      return (
+                        <div key={cat} onClick={() => setSelectedCategory(cat)}
+                          style={{ background:`${color}12`, border:`1px solid ${color}30`, borderRadius:20, padding:'1.5rem', cursor:'pointer', transition:'all 0.2s' }}
+                          onMouseEnter={e => { e.currentTarget.style.transform='translateY(-3px)'; e.currentTarget.style.boxShadow=`0 12px 40px ${color}20` }}
+                          onMouseLeave={e => { e.currentTarget.style.transform=''; e.currentTarget.style.boxShadow='' }}>
+                          <div style={{ fontSize:32, marginBottom:10 }}>
+                            {cat==='Shirts'?'👕':cat==='Trousers'?'👖':cat==='Shorts'?'🩳':cat==='Jeans'?'🩳':cat==='Sweaters'?'🧥':cat==='Jackets'?'🥼':cat==='Accessories'?'💍':cat==='Perfumes'?'🌸':cat==='Shoes'?'👟':cat==='Trends'?'📱':cat==='Script (Multi)'?'📝':'📦'}
+                          </div>
+                          <div style={{ fontSize:16, fontWeight:800, color:'#fff', marginBottom:4 }}>{cat}</div>
+                          <div style={{ fontSize:12, color:'rgba(255,255,255,0.45)' }}>{catRefs.length} refs · {approved} approved</div>
+                          <div style={{ marginTop:12, height:3, background:'rgba(255,255,255,0.08)', borderRadius:99, overflow:'hidden' }}>
+                            <div style={{ height:'100%', width:`${catRefs.length>0?(approved/catRefs.length)*100:0}%`, background:color, borderRadius:99, transition:'width 0.5s' }} />
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div>
+                <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:20 }}>
+                  <button onClick={() => setSelectedCategory(null)}
+                    style={{ background:'transparent', border:'none', color:'rgba(255,255,255,0.5)', cursor:'pointer', fontSize:20, padding:0 }}>←</button>
+                  <h2 style={{ fontSize:20, fontWeight:800, color:'#fff' }}>{selectedCategory}</h2>
+                  <span style={{ fontSize:13, color:'rgba(255,255,255,0.3)' }}>{filteredRefs.length} references</span>
+                </div>
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))', gap:14 }}>
+                  {filteredRefs.map((ref, idx) => {
+                    const color = ref.approval_status==='approved'?'#10b981':ref.approval_status==='rejected'?'#dc2626':'rgba(255,255,255,0.1)'
+                    return (
+                      <div key={ref.id} style={{ background:'rgba(255,255,255,0.03)', border:`1px solid ${color}`, borderRadius:16, overflow:'hidden' }}>
+                        <div style={{ padding:'14px 16px', borderBottom:'1px solid rgba(255,255,255,0.06)', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                          <span style={{ fontSize:12, fontWeight:700, color:'rgba(255,255,255,0.4)' }}>#{idx+1}</span>
+                          <div style={{ display:'flex', gap:6 }}>
+                            <button onClick={() => setApproval(ref,'approved')} disabled={ref.is_locked}
+                              style={{ padding:'4px 12px', borderRadius:99, border:'none', background:ref.approval_status==='approved'?'#10b981':'rgba(16,185,129,0.1)', color:ref.approval_status==='approved'?'#fff':'#10b981', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>
+                              ✓ Approve
+                            </button>
+                            <button onClick={() => setApproval(ref,'rejected')} disabled={ref.is_locked}
+                              style={{ padding:'4px 12px', borderRadius:99, border:'none', background:ref.approval_status==='rejected'?'#dc2626':'rgba(220,38,38,0.1)', color:ref.approval_status==='rejected'?'#fff':'#dc2626', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>
+                              ✗ Reject
+                            </button>
+                          </div>
+                        </div>
+                        <div style={{ padding:'14px 16px' }}>
+                          {ref.reference_link && (
+                            <a href={ref.reference_link} target="_blank" rel="noreferrer"
+                              style={{ display:'block', padding:'8px 12px', background:'rgba(255,0,128,0.08)', border:'1px solid rgba(255,0,128,0.2)', borderRadius:10, color:'#ff0080', fontSize:12, fontWeight:700, textDecoration:'none', marginBottom:10 }}>
+                              ↗ View Reference
+                            </a>
                           )}
+                          {ref.script_notes && <div style={{ fontSize:12, color:'rgba(255,255,255,0.6)', marginBottom:6, lineHeight:1.5 }}><span style={{ color:'rgba(255,255,255,0.3)', fontSize:10, textTransform:'uppercase', fontWeight:700 }}>Notes</span><br/>{ref.script_notes}</div>}
+                          {ref.brand_callouts && <div style={{ fontSize:12, color:'rgba(255,255,255,0.6)', lineHeight:1.5 }}><span style={{ color:'rgba(255,255,255,0.3)', fontSize:10, textTransform:'uppercase', fontWeight:700 }}>Callouts</span><br/>{ref.brand_callouts}</div>}
                         </div>
-                      </td>
-                      <td style={{ padding: '10px 12px' }}>
-                        <div style={{ display: 'flex', gap: 4 }}>
-                          <button onClick={() => setApproval(ref, 'approved')} disabled={ref.is_locked} title="Approve"
-                            style={{ width: 28, height: 28, borderRadius: 6, border: 'none', background: ref.approval_status === 'approved' ? '#059669' : 'var(--tab-bg)', color: ref.approval_status === 'approved' ? '#fff' : 'var(--text-secondary)', cursor: ref.is_locked ? 'not-allowed' : 'pointer', fontSize: 13, opacity: ref.is_locked ? 0.4 : 1 }}>✓</button>
-                          <button onClick={() => setApproval(ref, 'rejected')} disabled={ref.is_locked} title="Reject"
-                            style={{ width: 28, height: 28, borderRadius: 6, border: 'none', background: ref.approval_status === 'rejected' ? '#dc2626' : 'var(--tab-bg)', color: ref.approval_status === 'rejected' ? '#fff' : 'var(--text-secondary)', cursor: ref.is_locked ? 'not-allowed' : 'pointer', fontSize: 13, opacity: ref.is_locked ? 0.4 : 1 }}>✗</button>
-                          <button onClick={() => toggleLock(ref)} title={ref.is_locked ? 'Unlock' : 'Lock'}
-                            style={{ width: 28, height: 28, borderRadius: 6, border: 'none', background: ref.is_locked ? '#059669' : 'var(--tab-bg)', color: ref.is_locked ? '#fff' : 'var(--text-secondary)', cursor: 'pointer', fontSize: 13 }}>🔒</button>
-                          <button onClick={() => openEdit(ref)} title="Edit"
-                            style={{ width: 28, height: 28, borderRadius: 6, border: 'none', background: 'var(--tab-bg)', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 13 }}>✏️</button>
-                          <button onClick={() => viewLogs(ref.id)} title="Logs"
-                            style={{ width: 28, height: 28, borderRadius: 6, border: 'none', background: 'var(--tab-bg)', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 13 }}>📋</button>
-                        </div>
-                      </td>
-                    </tr>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* AGENCY VIEW — Spreadsheet */}
+        {isAgency && (
+          <>
+            {/* Category filter pills */}
+            {allCats.length > 0 && (
+              <div style={{ display:'flex', gap:8, marginBottom:16, flexWrap:'wrap' }}>
+                <button onClick={() => setSelectedCategory(null)}
+                  style={{ padding:'5px 14px', borderRadius:99, border:`1px solid ${!selectedCategory?'rgba(255,0,128,0.5)':'rgba(255,255,255,0.1)'}`, background:!selectedCategory?'rgba(255,0,128,0.1)':'transparent', color:!selectedCategory?'#ff0080':'rgba(255,255,255,0.5)', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>
+                  All ({references.length})
+                </button>
+                {allCats.map(cat => {
+                  const count = references.filter(r=>r.category===cat).length
+                  const color = CATEGORY_COLORS[cat] || '#9ca3af'
+                  const active = selectedCategory === cat
+                  return (
+                    <button key={cat} onClick={() => setSelectedCategory(active?null:cat)}
+                      style={{ padding:'5px 14px', borderRadius:99, border:`1px solid ${active?color+'80':'rgba(255,255,255,0.1)'}`, background:active?`${color}18`:'transparent', color:active?color:'rgba(255,255,255,0.5)', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>
+                      {cat} ({count})
+                    </button>
                   )
                 })}
-              </tbody>
-            </table>
-          </div>
+              </div>
+            )}
+
+            {/* Spreadsheet table */}
+            <div style={{ overflowX:'auto', borderRadius:16, border:'1px solid rgba(255,255,255,0.08)', background:'rgba(255,255,255,0.02)' }}>
+              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+                <thead>
+                  <tr style={{ borderBottom:'1px solid rgba(255,255,255,0.08)', background:'rgba(255,255,255,0.03)' }}>
+                    {['#','Link','Category','Notes','Edit Notes','Callouts','Location','Camera','File No.','Director','Status',''].map(h => (
+                      <th key={h} style={{ padding:'10px 12px', textAlign:'left', fontSize:10, fontWeight:700, color:'rgba(255,255,255,0.3)', textTransform:'uppercase', letterSpacing:'0.08em', whiteSpace:'nowrap', borderRight:'1px solid rgba(255,255,255,0.05)' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredRefs.map((ref, idx) => {
+                    const color = CATEGORY_COLORS[ref.category||''] || '#9ca3af'
+                    return (
+                      <tr key={ref.id} style={{ borderBottom:'1px solid rgba(255,255,255,0.04)', background: ref.approval_status==='approved'?'rgba(16,185,129,0.04)':ref.approval_status==='rejected'?'rgba(220,38,38,0.04)':'transparent' }}
+                        onMouseEnter={e => e.currentTarget.style.background='rgba(255,255,255,0.03)'}
+                        onMouseLeave={e => e.currentTarget.style.background=ref.approval_status==='approved'?'rgba(16,185,129,0.04)':ref.approval_status==='rejected'?'rgba(220,38,38,0.04)':'transparent'}>
+                        <td style={{ ...cellStyle, padding:'8px 12px', color:'rgba(255,255,255,0.3)', fontWeight:600, fontSize:11, width:36 }}>{idx+1}</td>
+
+                        {/* Link cell */}
+                        <td style={{ ...cellStyle, minWidth:140 }}>
+                          {editingCell?.id===ref.id && editingCell.field==='reference_link' ? (
+                            <input autoFocus value={cellValue} onChange={e=>setCellValue(e.target.value)}
+                              onBlur={() => saveCell(ref.id,'reference_link',cellValue)}
+                              onKeyDown={e => { if(e.key==='Enter'||e.key==='Tab') saveCell(ref.id,'reference_link',cellValue) }}
+                              style={inputStyle} />
+                          ) : (
+                            <div style={{ padding:'6px 8px', display:'flex', alignItems:'center', gap:6 }} onClick={() => { setEditingCell({id:ref.id,field:'reference_link'}); setCellValue(ref.reference_link||'') }}>
+                              {ref.reference_link ? (
+                                <>
+                                  <a href={ref.reference_link} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{ color:'#ff0080', fontWeight:700, textDecoration:'none', fontSize:11 }}>↗</a>
+                                  <span style={{ color:'rgba(255,255,255,0.4)', fontSize:11 }}>{formatUrl(ref.reference_link)}</span>
+                                </>
+                              ) : <span style={{ color:'rgba(255,255,255,0.15)' }}>+ link</span>}
+                            </div>
+                          )}
+                        </td>
+
+                        {/* Category cell */}
+                        <td style={{ ...cellStyle, minWidth:120 }}>
+                          {editingCell?.id===ref.id && editingCell.field==='category' ? (
+                            <select autoFocus value={cellValue} onChange={e=>setCellValue(e.target.value)}
+                              onBlur={() => saveCell(ref.id,'category',cellValue)}
+                              style={{ ...inputStyle, background:'#1a1a2e' }}>
+                              {CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                            </select>
+                          ) : (
+                            <div style={{ padding:'6px 8px' }} onClick={() => { setEditingCell({id:ref.id,field:'category'}); setCellValue(ref.category||'Other') }}>
+                              <span style={{ background:`${color}18`, color, padding:'2px 8px', borderRadius:99, fontSize:11, fontWeight:700, whiteSpace:'nowrap' }}>{ref.category||'—'}</span>
+                            </div>
+                          )}
+                        </td>
+
+                        {/* Notes, Edit Notes, Callouts, Location, Camera, File No, Director — all inline editable */}
+                        {(['script_notes','edit_notes','brand_callouts','location','camera','file_number','assigned_director'] as const).map(field => (
+                          <td key={field} style={{ ...cellStyle, minWidth: field==='script_notes'||field==='edit_notes'?160:100 }}>
+                            {editingCell?.id===ref.id && editingCell.field===field ? (
+                              field === 'assigned_director' ? (
+                                <select autoFocus value={cellValue} onChange={e=>setCellValue(e.target.value)}
+                                  onBlur={() => saveCell(ref.id,field,cellValue)}
+                                  style={{ ...inputStyle, background:'#1a1a2e' }}>
+                                  <option value="">Unassigned</option>
+                                  {DIRECTORS.map(d => <option key={d}>{d}</option>)}
+                                </select>
+                              ) : (
+                                <input autoFocus value={cellValue} onChange={e=>setCellValue(e.target.value)}
+                                  onBlur={() => saveCell(ref.id,field,cellValue)}
+                                  onKeyDown={e => { if(e.key==='Enter'||e.key==='Tab') saveCell(ref.id,field,cellValue) }}
+                                  style={inputStyle} />
+                              )
+                            ) : (
+                              <div style={{ padding:'6px 8px', color:(ref as any)[field]?'rgba(255,255,255,0.7)':'rgba(255,255,255,0.15)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', maxWidth:160 }}
+                                onClick={() => { setEditingCell({id:ref.id,field}); setCellValue((ref as any)[field]||'') }}>
+                                {(ref as any)[field] || '+'}
+                              </div>
+                            )}
+                          </td>
+                        ))}
+
+                        {/* Status */}
+                        <td style={{ ...cellStyle, minWidth:80 }}>
+                          <div style={{ padding:'6px 8px' }}>
+                            <span style={{ fontSize:11, fontWeight:700, color: ref.approval_status==='approved'?'#10b981':ref.approval_status==='rejected'?'#dc2626':'rgba(255,255,255,0.3)' }}>
+                              {ref.approval_status==='approved'?'✓ Approved':ref.approval_status==='rejected'?'✗ Rejected':'Pending'}
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* Delete */}
+                        <td style={{ padding:'6px 8px', width:36 }}>
+                          <button onClick={() => deleteRef(ref.id)} disabled={deleting===ref.id}
+                            style={{ width:26, height:26, borderRadius:6, border:'none', background:'rgba(220,38,38,0.1)', color:'#fca5a5', cursor:'pointer', fontSize:12, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                            {deleting===ref.id ? '…' : '✕'}
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })}
+
+                  {/* Quick-add row */}
+                  <tr style={{ borderBottom:'none', background:'rgba(255,0,128,0.02)' }}>
+                    <td style={{ padding:'8px 12px', color:'rgba(255,255,255,0.2)', fontSize:11 }}>+</td>
+                    <td style={{ borderRight:'1px solid rgba(255,255,255,0.05)' }}>
+                      <input ref={linkRef} value={newRow.reference_link}
+                        onChange={e => { nr('reference_link',e.target.value); if(e.target.value) nr('category', detectCategory(e.target.value)) }}
+                        onKeyDown={e => e.key==='Enter' && addRowReference()}
+                        placeholder="Paste link and press Enter…"
+                        style={{ ...inputStyle, color:'rgba(255,255,255,0.5)' }} />
+                    </td>
+                    <td style={{ borderRight:'1px solid rgba(255,255,255,0.05)' }}>
+                      <select value={newRow.category} onChange={e=>nr('category',e.target.value)}
+                        style={{ ...inputStyle, background:'transparent' }}>
+                        {CATEGORIES.map(c=><option key={c}>{c}</option>)}
+                      </select>
+                    </td>
+                    {(['script_notes','edit_notes','brand_callouts','location','camera','file_number'] as const).map(field => (
+                      <td key={field} style={{ borderRight:'1px solid rgba(255,255,255,0.05)' }}>
+                        <input value={(newRow as any)[field]} onChange={e=>nr(field,e.target.value)}
+                          onKeyDown={e => e.key==='Enter' && addRowReference()}
+                          placeholder="+" style={{ ...inputStyle, color:'rgba(255,255,255,0.4)' }} />
+                      </td>
+                    ))}
+                    <td style={{ borderRight:'1px solid rgba(255,255,255,0.05)' }}>
+                      <select value={newRow.assigned_director} onChange={e=>nr('assigned_director',e.target.value)}
+                        style={{ ...inputStyle, background:'transparent', color:'rgba(255,255,255,0.4)' }}>
+                        <option value="">Director</option>
+                        {DIRECTORS.map(d=><option key={d}>{d}</option>)}
+                      </select>
+                    </td>
+                    <td colSpan={2} style={{ padding:'6px 8px' }}>
+                      <button onClick={addRowReference} disabled={saving||!newRow.reference_link}
+                        style={{ padding:'5px 12px', borderRadius:8, border:'none', background:'#ff0080', color:'#fff', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:'inherit', opacity:newRow.reference_link?1:0.3 }}>
+                        {saving?'…':'Add'}
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </main>
 
       {/* Add Project Modal */}
       {showAddProject && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
-          onClick={e => e.target === e.currentTarget && setShowAddProject(false)}>
-          <div style={{ background: 'var(--surface)', borderRadius: 20, padding: '1.75rem', width: '100%', maxWidth: 400, border: '1px solid var(--border)' }}>
-            <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: '1.25rem' }}>New Project / Shoot</h2>
-            <label style={labelStyle}>Project Name</label>
-            <input value={newProjectName} onChange={e => setNewProjectName(e.target.value)} placeholder="e.g. March 100 Regular" autoFocus style={inputStyle} onKeyDown={e => e.key === 'Enter' && addProject()} />
-            <div style={{ display: 'flex', gap: 8, marginTop: '1.25rem' }}>
-              <button onClick={() => setShowAddProject(false)} style={{ flex: 1, padding: '11px', borderRadius: 10, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>Cancel</button>
-              <button onClick={addProject} disabled={saving} style={{ flex: 2, padding: '11px', borderRadius: 10, border: 'none', background: 'var(--brand)', color: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700 }}>{saving ? 'Creating…' : 'Create Project'}</button>
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.85)', backdropFilter:'blur(8px)', zIndex:100, display:'flex', alignItems:'center', justifyContent:'center', padding:'1rem' }}
+          onClick={e => e.target===e.currentTarget && setShowAddProject(false)}>
+          <div style={{ background:'#0f0f1a', border:'1px solid rgba(255,255,255,0.1)', borderRadius:20, padding:'1.75rem', width:'100%', maxWidth:400 }}>
+            <h2 style={{ fontSize:18, fontWeight:700, marginBottom:'1.25rem', color:'#fff' }}>New Project / Shoot</h2>
+            <input value={newProjectName} onChange={e => setNewProjectName(e.target.value)} placeholder="e.g. March 100 Regular" autoFocus
+              style={{ background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:10, padding:'10px 14px', fontSize:14, color:'#fff', fontFamily:'inherit', width:'100%', outline:'none' }}
+              onKeyDown={e => e.key==='Enter' && addProject()} />
+            <div style={{ display:'flex', gap:8, marginTop:'1.25rem' }}>
+              <button onClick={() => setShowAddProject(false)} style={{ flex:1, padding:'11px', borderRadius:10, border:'1px solid rgba(255,255,255,0.1)', background:'transparent', color:'rgba(255,255,255,0.5)', cursor:'pointer', fontFamily:'inherit', fontWeight:600 }}>Cancel</button>
+              <button onClick={addProject} disabled={saving} style={{ flex:2, padding:'11px', borderRadius:10, border:'none', background:'#ff0080', color:'#fff', cursor:'pointer', fontFamily:'inherit', fontWeight:700 }}>{saving?'Creating…':'Create Project'}</button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Add/Edit Reference Modal */}
-      {(showAddRef || editingRef) && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 100, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
-          onClick={e => e.target === e.currentTarget && (setShowAddRef(false), setEditingRef(null))}>
-          <div style={{ background: 'var(--surface)', borderRadius: '20px 20px 0 0', padding: '1.5rem', width: '100%', maxWidth: 640, maxHeight: '90vh', overflowY: 'auto', border: '1px solid var(--border)' }}>
-            <div style={{ width: 40, height: 4, background: 'var(--border)', borderRadius: 99, margin: '0 auto 1.25rem' }} />
-            <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: '1.25rem' }}>{editingRef ? '✏️ Edit Reference' : '+ Add Reference'}</h2>
-            <div style={{ display: 'grid', gap: 12 }}>
-              <div>
-                <label style={labelStyle}>Reference Link</label>
-                <input value={refForm.reference_link} onChange={e => rf('reference_link', e.target.value)} placeholder="https://..." style={inputStyle} />
-              </div>
-              <div>
-                <label style={labelStyle}>Category</label>
-                <select value={refForm.category} onChange={e => rf('category', e.target.value)} style={inputStyle}>
-                  {CATEGORIES.map(c => <option key={c}>{c}</option>)}
-                </select>
-              </div>
-              {refForm.category === 'Other' && (
-                <div>
-                  <label style={labelStyle}>Specify Category</label>
-                  <input value={refForm.other_category} onChange={e => rf('other_category', e.target.value)} placeholder="Enter category name" style={inputStyle} />
-                </div>
-              )}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                <div>
-                  <label style={labelStyle}>Script / Notes</label>
-                  <textarea value={refForm.script_notes} onChange={e => rf('script_notes', e.target.value)} placeholder="Script or shoot notes" style={{ ...inputStyle, minHeight: 80 }} />
-                </div>
-                <div>
-                  <label style={labelStyle}>Edit Notes</label>
-                  <textarea value={refForm.edit_notes} onChange={e => rf('edit_notes', e.target.value)} placeholder="Editing instructions" style={{ ...inputStyle, minHeight: 80 }} />
-                </div>
-              </div>
-              <div>
-                <label style={labelStyle}>Brand Call Outs</label>
-                <input value={refForm.brand_callouts} onChange={e => rf('brand_callouts', e.target.value)} placeholder="e.g. Show logo at 0:03" style={inputStyle} />
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                <div>
-                  <label style={labelStyle}>Shot on Day</label>
-                  <input value={refForm.shot_on_day} onChange={e => rf('shot_on_day', e.target.value)} placeholder="e.g. Day 1" style={inputStyle} />
-                </div>
-                <div>
-                  <label style={labelStyle}>Location</label>
-                  <input value={refForm.location} onChange={e => rf('location', e.target.value)} placeholder="e.g. Studio A" style={inputStyle} />
-                </div>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                <div>
-                  <label style={labelStyle}>Camera</label>
-                  <input value={refForm.camera} onChange={e => rf('camera', e.target.value)} placeholder="e.g. Sony A7IV" style={inputStyle} />
-                </div>
-                <div>
-                  <label style={labelStyle}>File Number</label>
-                  <input value={refForm.file_number} onChange={e => rf('file_number', e.target.value)} placeholder="e.g. A001" style={inputStyle} />
-                </div>
-              </div>
-              {isAgencyOrDirector && (
-                <div>
-                  <label style={labelStyle}>Assign Director</label>
-                  <select value={refForm.assigned_director} onChange={e => rf('assigned_director', e.target.value)} style={inputStyle}>
-                    <option value="">Unassigned</option>
-                    {DIRECTORS.map(d => <option key={d}>{d}</option>)}
-                  </select>
-                </div>
-              )}
-            </div>
-            <div style={{ display: 'flex', gap: 8, marginTop: '1.25rem' }}>
-              <button onClick={() => { setShowAddRef(false); setEditingRef(null); setRefForm(emptyRef) }}
-                style={{ flex: 1, padding: '12px', borderRadius: 12, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>Cancel</button>
-              <button onClick={editingRef ? updateReference : addReference} disabled={saving}
-                style={{ flex: 2, padding: '12px', borderRadius: 12, border: 'none', background: 'var(--brand)', color: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 14 }}>
-                {saving ? 'Saving…' : editingRef ? 'Save Changes' : 'Add Reference'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Logs Modal */}
-      {showLogs && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 100, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
-          onClick={() => setShowLogs(null)}>
-          <div style={{ background: 'var(--surface)', borderRadius: '20px 20px 0 0', padding: '1.5rem', width: '100%', maxWidth: 500, maxHeight: '70vh', overflowY: 'auto', border: '1px solid var(--border)' }}
-            onClick={e => e.stopPropagation()}>
-            <div style={{ width: 40, height: 4, background: 'var(--border)', borderRadius: 99, margin: '0 auto 1.25rem' }} />
-            <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: '1rem' }}>📋 Activity Log</h2>
-            {logs.length === 0 ? <p style={{ color: 'var(--text-tertiary)', fontSize: 13, textAlign: 'center', padding: '2rem' }}>No activity yet</p> : (
-              <div style={{ display: 'grid', gap: 8 }}>
-                {logs.map(log => (
-                  <div key={log.id} style={{ background: 'var(--tab-bg)', borderRadius: 10, padding: '10px 14px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{log.user_name}</span>
-                      <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{new Date(log.created_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
-                    </div>
-                    <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                      <span style={{ textTransform: 'capitalize', fontWeight: 500 }}>{log.action}</span>
-                      {log.field_changed && ` · ${log.field_changed}`}
-                      {log.new_value && log.action !== 'edited' && ` → ${log.new_value}`}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-            <button onClick={() => setShowLogs(null)} style={{ width: '100%', marginTop: '1rem', padding: '11px', borderRadius: 12, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>Close</button>
           </div>
         </div>
       )}
