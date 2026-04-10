@@ -4,7 +4,7 @@ import { useRouter } from 'next/router'
 import { supabase, type Profile, type Project, type Reference } from '@/lib/supabase'
 import AppNav from '@/components/AppNav'
 
-const CATEGORIES = ['Shirts','Trousers','Shorts','Jeans','Sweaters','Jackets','Accessories','Perfumes','Shoes','Trends','Script (Multi)','Other']
+const CATEGORIES = ['Shirts','T-Shirts','Polos','Trousers','Shorts','Jeans','Sweaters','Jackets','Accessories','Perfumes','Shoes','Trends','Script (Multi)','Other']
 const DIRECTORS = ['Sneha','Kriti','Harshit']
 const CATEGORY_COLORS: Record<string,string> = {
   'Shirts':'#ff0080','Trousers':'#0050ff','Shorts':'#f59e0b','Jeans':'#059669',
