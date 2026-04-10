@@ -75,6 +75,21 @@ export default function ReferencesPage() {
     setNewProjectName(''); setShowAddProject(false); setSaving(false)
   }
 
+  async function deleteProject(pid: string) {
+    if (!confirm('Delete this project and all its references? This cannot be undone.')) return
+    await supabase.from('references').delete().eq('project_id', pid)
+    await supabase.from('projects').delete().eq('id', pid)
+    const remaining = projects.filter(p => p.id !== pid)
+    setProjects(remaining)
+    if (remaining.length > 0) {
+      setSelectedProject(remaining[0].id)
+      loadRefs(remaining[0].id)
+    } else {
+      setSelectedProject('')
+      setReferences([])
+    }
+  }
+
   async function addRowReference() {
     if (!selectedProject || !newRow.reference_link.trim()) return
     setSaving(true)
@@ -151,6 +166,12 @@ export default function ReferencesPage() {
             style={{ padding:'9px 16px', borderRadius:10, border:'1px solid rgba(255,255,255,0.1)', background:'rgba(255,255,255,0.05)', color:'rgba(255,255,255,0.7)', cursor:'pointer', fontSize:13, fontFamily:'inherit' }}>
             + Project
           </button>
+          {selectedProject && (
+            <button onClick={() => deleteProject(selectedProject)}
+              style={{ padding:'9px 14px', borderRadius:10, border:'1px solid rgba(220,38,38,0.3)', background:'rgba(220,38,38,0.08)', color:'#fca5a5', cursor:'pointer', fontSize:13, fontFamily:'inherit' }}>
+              🗑 Delete Project
+            </button>
+          )}
           <span style={{ fontSize:13, color:'rgba(255,255,255,0.3)', marginLeft:'auto' }}>{references.length} refs</span>
         </div>
 
