@@ -31,6 +31,7 @@ export default function AppNav({ profile }: { profile: any }) {
     { label: '📋 References', href: '/references' },
     { label: '📊 Dashboard', href: '/dashboard' },
     ...(isAgencyOrDirector ? [{ label: '🎬 Directors', href: '/directors' }] : []),
+    ...(isAgencyOrDirector ? [{ label: '✂️ Edit Table', href: '/edittable' }] : []),
     { label: '🎥 Reviews', href: '/reviews' },
   ]
 
@@ -91,11 +92,7 @@ export default function AppNav({ profile }: { profile: any }) {
                 {item.label}
               </button>
             ))}
-            <div style={{ height: 1, background: 'var(--border)', margin: '4px 8px' }} />
-            <button onClick={toggleTheme}
-              style={{ display: 'block', width: '100%', padding: '11px 14px', textAlign: 'left', background: 'transparent', color: 'var(--text-primary)', border: 'none', borderRadius: 12, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>
-              {isDark ? '☀️ Light mode' : '🌙 Dark mode'}
-            </button>
+
             <div style={{ height: 1, background: 'var(--border)', margin: '4px 8px' }} />
             <button onClick={async () => { await supabase.auth.signOut(); router.push('/') }}
               style={{ display: 'block', width: '100%', padding: '11px 14px', textAlign: 'left', background: 'transparent', color: '#dc2626', border: 'none', borderRadius: 12, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>
