@@ -87,7 +87,7 @@ export default function EditTablePage() {
               </thead>
               <tbody>
                 {references.map((ref, idx) => (
-                  <tr key={ref.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', background: ref.edit_notes ? 'rgba(16,185,129,0.06)' : 'transparent', borderLeft: ref.edit_notes ? '3px solid #10b981' : '3px solid transparent' }}
+                  <tr key={ref.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', background: ref.file_number ? 'rgba(16,185,129,0.06)' : 'transparent', borderLeft: ref.file_number ? '3px solid #10b981' : '3px solid transparent' }}
                     onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
 
