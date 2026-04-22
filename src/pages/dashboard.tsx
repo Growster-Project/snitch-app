@@ -66,7 +66,15 @@ export default function DashboardPage() {
       }, {} as Record<string, number>)
     ).map(([name, value]) => ({ name, value }))
 
-    return { total, approved, rejected, pending, locked, byCategory, byDirector }
+    // Done = has file_number, Pending = assigned but no file_number
+    const directorProgress = ['Sneha','Kriti','Harshit'].map(dir => {
+      const assigned = references.filter(r => r.assigned_director === dir)
+      const done = assigned.filter(r => r.file_number)
+      const pending = assigned.filter(r => !r.file_number)
+      return { name: dir, assigned: assigned.length, done: done.length, pending: pending.length }
+    }).filter(d => d.assigned > 0)
+
+    return { total, approved, rejected, pending, locked, byCategory, byDirector, directorProgress }
   }, [references])
 
   if (loading) return <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}><p style={{ color: 'var(--text-secondary)' }}>Loading…</p></div>
@@ -147,15 +155,28 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* Director breakdown */}
-            {stats.byDirector.length > 0 && (
+            {/* Director progress */}
+            {stats.directorProgress.length > 0 && (
               <div className="card" style={{ marginBottom: '1.5rem' }}>
-                <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: '1rem' }}>🎬 Director Assignments</h3>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 10 }}>
-                  {stats.byDirector.map(d => (
-                    <div key={d.name} style={{ background: 'var(--tab-bg)', borderRadius: 12, padding: '12px', textAlign: 'center' as const }}>
-                      <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--brand)' }}>{d.value}</div>
-                      <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4, fontWeight: 500 }}>{d.name}</div>
+                <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: '1rem' }}>🎬 Director Progress</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
+                  {stats.directorProgress.map(d => (
+                    <div key={d.name} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 16, padding: '1.25rem' }}>
+                      <div style={{ fontSize: 15, fontWeight: 800, color: '#fff', marginBottom: 12 }}>🎬 {d.name}</div>
+                      <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                        <div style={{ flex: 1, background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: 10, padding: '8px 12px', textAlign: 'center' as const }}>
+                          <div style={{ fontSize: 22, fontWeight: 900, color: '#10b981' }}>{d.done}</div>
+                          <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(16,185,129,0.7)', textTransform: 'uppercase' as const, letterSpacing: '0.08em', marginTop: 2 }}>Done</div>
+                        </div>
+                        <div style={{ flex: 1, background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: 10, padding: '8px 12px', textAlign: 'center' as const }}>
+                          <div style={{ fontSize: 22, fontWeight: 900, color: '#f59e0b' }}>{d.pending}</div>
+                          <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(245,158,11,0.7)', textTransform: 'uppercase' as const, letterSpacing: '0.08em', marginTop: 2 }}>Pending</div>
+                        </div>
+                      </div>
+                      <div style={{ height: 6, background: 'rgba(255,255,255,0.06)', borderRadius: 99, overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: d.assigned > 0 ? `${(d.done/d.assigned)*100}%` : '0%', background: 'linear-gradient(90deg,#10b981,#059669)', borderRadius: 99, transition: 'width 0.5s' }} />
+                      </div>
+                      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginTop: 6 }}>{d.assigned} total assigned · {d.assigned > 0 ? Math.round((d.done/d.assigned)*100) : 0}% complete</div>
                     </div>
                   ))}
                 </div>

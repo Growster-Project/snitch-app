@@ -112,14 +112,14 @@ export default function DirectorsPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border)', background: 'var(--tab-bg)' }}>
-                  {['#','Reference','Category','Script Notes','Brand Callouts','Location','Director','Director Notes','Assign','Actions'].map(h => (
+                  {['#','Reference','Category','Script Notes','Brand Callouts','Location','Camera','File No.','Director','Director Notes','Assign','Actions'].map(h => (
                     <th key={h} style={{ padding: '10px 12px', textAlign: 'left' as const, fontSize: 10, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase' as const, whiteSpace: 'nowrap' as const }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {directorRefs.map((ref, idx) => (
-                  <tr key={ref.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                  <tr key={ref.id} style={{ borderBottom: '1px solid var(--border)', background: ref.file_number ? 'rgba(16,185,129,0.06)' : 'transparent', borderLeft: ref.file_number ? '3px solid #10b981' : '3px solid transparent' }}>
                     <td style={{ padding: '10px 12px', color: 'var(--text-tertiary)', fontWeight: 600 }}>{ref.sno}</td>
                     <td style={{ padding: '10px 12px' }}>
                       {ref.reference_link ? <a href={ref.reference_link} target="_blank" rel="noreferrer" style={{ color: 'var(--brand)', fontSize: 12, textDecoration: 'none', fontWeight: 600 }}>↗ View</a> : <span style={{ color: 'var(--text-tertiary)' }}>—</span>}
@@ -130,6 +130,12 @@ export default function DirectorsPage() {
                     <td style={{ padding: '10px 12px', fontSize: 12, color: 'var(--text-secondary)', maxWidth: 160 }}>{ref.script_notes || '—'}</td>
                     <td style={{ padding: '10px 12px', fontSize: 12, color: 'var(--text-secondary)', maxWidth: 140 }}>{ref.brand_callouts || '—'}</td>
                     <td style={{ padding: '10px 12px', fontSize: 12, color: 'var(--text-secondary)' }}>{ref.location || '—'}</td>
+                    <td style={{ padding: '10px 12px', fontSize: 12, color: 'var(--text-secondary)' }}>{ref.camera || '—'}</td>
+                    <td style={{ padding: '10px 12px' }}>
+                      {ref.file_number
+                        ? <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 99, background: 'rgba(16,185,129,0.15)', color: '#10b981', fontWeight: 700 }}>✓ {ref.file_number}</span>
+                        : <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: 12 }}>—</span>}
+                    </td>
                     <td style={{ padding: '10px 12px' }}>
                       {ref.assigned_director ? <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 99, background: '#dbeafe', color: '#1d4ed8', fontWeight: 600 }}>{ref.assigned_director}</span> : <span style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>—</span>}
                     </td>
