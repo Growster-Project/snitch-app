@@ -69,8 +69,8 @@ export default function DashboardPage() {
     // Done = has file_number, Pending = assigned but no file_number
     const directorProgress = ['Sneha','Kriti','Harshit'].map(dir => {
       const assigned = references.filter(r => r.assigned_director === dir)
-      const done = assigned.filter(r => r.file_number)
-      const pending = assigned.filter(r => !r.file_number)
+      const done = assigned.filter(r => r.file_number || r.camera || r.edit_notes?.toLowerCase().includes('done'))
+      const pending = assigned.filter(r => !r.file_number && !r.camera && !r.edit_notes?.toLowerCase().includes('done'))
       return { name: dir, assigned: assigned.length, done: done.length, pending: pending.length }
     }).filter(d => d.assigned > 0)
 
