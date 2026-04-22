@@ -297,7 +297,7 @@ export default function ReferencesPage() {
                     const color = CATEGORY_COLORS[ref.category||''] || '#9ca3af'
                     return (
                       <tr key={ref.id} style={{ borderBottom:'1px solid rgba(255,255,255,0.04)', background: (ref.file_number||ref.camera||ref.edit_notes?.toLowerCase().includes('done'))?'rgba(16,185,129,0.06)':ref.approval_status==='approved'?'rgba(16,185,129,0.04)':ref.approval_status==='rejected'?'rgba(220,38,38,0.04)':'transparent', borderLeft:(ref.file_number||ref.camera||ref.edit_notes?.toLowerCase().includes('done'))?'3px solid #10b981':'3px solid transparent' }}
-                        onMouseEnter={e => e.currentTarget.style.background='rgba(255,255,255,0.03)'}
+                        onMouseEnter={e => e.currentTarget.style.background=(ref.file_number||ref.camera||ref.edit_notes?.toLowerCase().includes('done'))?'rgba(16,185,129,0.1)':'rgba(255,255,255,0.03)'}
                         onMouseLeave={e => e.currentTarget.style.background=(ref.file_number||ref.camera||ref.edit_notes?.toLowerCase().includes('done'))?'rgba(16,185,129,0.08)':ref.approval_status==='approved'?'rgba(16,185,129,0.04)':ref.approval_status==='rejected'?'rgba(220,38,38,0.04)':'transparent'}>
                         <td style={{ ...cellStyle, padding:'8px 12px', color:'rgba(255,255,255,0.3)', fontWeight:600, fontSize:11, width:36 }}>{idx+1}</td>
 
